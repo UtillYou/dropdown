@@ -1,0 +1,92 @@
+@border-color:#888;
+@border-color-light:#ddd;
+@hover-bg-color:#eee;
+@active-bg-color:#40a9ff;
+
+.i-dropdown-container{
+    position: relative;
+    & *{
+        box-sizing:  border-box;
+    }
+    .i-input-field{
+        position: relative;
+        width: calc(100% - 25px);
+        height: 100%;
+        z-index: 999;
+        border:1px solid @border-color;
+        padding: 0px 5px;
+        &:focus{
+            border-color: #40a9ff;
+            outline: 0;
+            -webkit-box-shadow: 0 0 0 2px rgba(24,144,255,0.2);
+            box-shadow: 0 0 0 2px rgba(24,144,255,0.2);
+            border-right-width: 1px !important;
+        }
+    }
+    .i-arrow{
+        width:25px;
+        height: 100%;
+        position: absolute;
+        right: 0px;
+        top:0px;
+        bottom: 0px;
+        z-index: 999;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-image: url(./down-arrow.png);
+        background-size: contain;
+        border:1px solid @border-color;
+        border-left: none;
+        transition: 50ms all ease;
+        background-size: 90%;
+        &:active{
+            background-size: 100%;
+        }
+    }
+    .i-list-container{
+        position: absolute;
+        width:100%;
+        height: calc(100% + 300px);
+        top: 0px;
+        left:0px;
+        right: 0px;
+        box-shadow: 0px 0px 15px -4px @border-color;
+        
+        .i-list-wraper{
+            height: 300px;
+            position: absolute;
+            bottom: 0px;
+            width: 100%;
+            overflow-y: auto;
+            border: 1px solid @border-color;
+            border-top: none;
+            .i-list{
+                list-style: none;
+                background-color: white;
+                font-size: 14px;
+                line-height: 20px;
+                .i-list-item{
+                    border-bottom: 1px solid @border-color-light;
+                    padding:5px;
+                    margin: 0px;
+                    position: absolute;
+                    width:100%;
+                    left:0px;
+                    right:0px;
+                    cursor:pointer;
+                    
+                    &:last-child{
+                        border-bottom: none;
+                    }
+                    &:hover{
+                        background-color: @hover-bg-color;
+                    }
+                    &.active{
+                        background-color: @active-bg-color;
+                        color: white;
+                    }
+                }
+            }
+        }
+    }
+}

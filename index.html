@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Document</title>
+  <link rel="stylesheet/less" type="text/css" href="dropdown.less" />
+  <script src="./less.min.js"></script>
+</head>
+<body>
+  <div style="margin:20px;border:1px solid gray;width:400px;height:200px;">
+    <input type="text" style="width:200px;height:30px;border:1px solid #333333;margin:20px;">
+  </div>
+</div>
+<div style="clear: both;"></div>
+  <script src="./jquery-1.11.3.min.js"></script>
+  <script src="./dropdown.js"></script>
+  <script type="text/javascript">
+    var arr=[];
+    for (var i = 0; i < 1000000; i++) {
+      arr.push({
+        name:'俺是第'+i.toString()+'项',
+        value:i.toString()
+      }) 
+    }
+    $('input').dropdown({
+      data:arr,
+      pageCount:50
+    });
+  </script>
+</body>
+</html>

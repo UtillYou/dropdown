@@ -1,0 +1,14 @@
+{
+  "name": "dropdown",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dropdown.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "wushengsong",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/jquery": "^3.3.29"
+  }
+}
