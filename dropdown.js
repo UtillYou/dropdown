@@ -2,7 +2,13 @@
 (function ($) {
     var DropDown = (function () {
         function DropDown($this, optionsParam) {
+            this.containerClass = 'i-dropdown-container';
+            this.inputClass = 'i-input-field';
             this.arrowClass = 'i-arrow';
+            this.listContainerClass = 'i-list-container';
+            this.listWraperClass = 'i-list-wraper';
+            this.listClass = 'i-list';
+            this.listItemClass = 'i-list-item';
             var defaults = {
                 containerTmpl: '<div class="i-dropdown-container"></div>',
                 inputTmpl: '<input type="text" class="i-input-field"/>',
@@ -12,8 +18,9 @@
                 listTmpl: '<div class="i-list"></div>',
                 listItemTmpl: '<div class="i-list-item"></div>',
                 pageCount: 50,
-                thresholdPercent: 0,
-                searchDelay: 300
+                thresholdPercent: 0.2,
+                searchDelay: 300,
+                listItemHeight: 30
             };
             var options = $.extend(defaults, optionsParam);
             this.$this = $this;
@@ -21,9 +28,11 @@
             this.state = {
                 isOpen: false,
                 isFocus: false,
+                isChange: true,
                 width: null,
                 height: null,
-                selectedValue: options.selectedValue || options.data[0].value,
+                selectedValue: options.selectedValue,
+                inputString: '',
                 lastScrollTop: 0,
                 indexSection: [0, options.pageCount],
                 threshold: Math.ceil(options.pageCount * options.thresholdPercent),
@@ -32,27 +41,23 @@
                 searchDelayTimeoutId: null
             };
             this.initHtml();
+            if (this.options.onDataRequestSuccess) {
+                this.state.$dom.$arrow
+                    .removeClass('disabled loading-state-button')
+                    .find('.loading-state')
+                    .attr("class", 'caret');
+                this.options.onDataRequestSuccess();
+            }
         }
         DropDown.prototype.initHtml = function () {
-            var options = this.options;
             var $this = this.$this;
-            var width = $this.width();
-            var height = $this.height();
-            var margin = $this.css('margin');
-            var container = $.parseHTML(options.containerTmpl);
-            var input = $.parseHTML(options.inputTmpl);
-            var arrow = $.parseHTML(options.arrowTmpl);
-            var listContainer = $.parseHTML(options.listContainerTmpl);
-            var listWraper = $.parseHTML(options.listWraperTmpl);
-            var list = $.parseHTML(options.listTmpl);
-            var $container = $(container);
-            var $input = $(input);
-            var $arrow = $(arrow);
-            var $listContainer = $(listContainer);
-            var $listWraper = $(listWraper);
-            var $list = $(list);
+            var $container = $this;
+            var $input = $this.find("." + this.inputClass);
+            var $arrow = $this.find("." + this.arrowClass);
+            var $listContainer = $this.find("." + this.listContainerClass);
+            var $listWraper = $this.find("." + this.listWraperClass);
+            var $list = $this.find("." + this.listClass);
             this.state.$dom = {
-                $origin: $this,
                 $container: $container,
                 $input: $input,
                 $arrow: $arrow,
@@ -60,49 +65,48 @@
                 $listWraper: $listWraper,
                 $list: $list
             };
-            $listContainer.append(listWraper);
-            $listWraper.append(list);
-            $list.css('height', this.state.data.length * this.state.listItemHeight);
-            $container.css({
-                width: width + 'px',
-                height: height + 'px',
-                margin: margin
-            }).append(input).append(arrow).append(listContainer);
-            $this.after(container);
-            $this.hide();
+            $listWraper.css('height', this.state.data.length * this.state.listItemHeight);
             $listContainer.hide();
-            this.setCurrentItem(this.state.selectedValue);
-            this.state.containerClickHandler = this.toggleOpen.bind(this);
+            if (this.state.selectedValue !== undefined && this.state.selectedValue !== null) {
+                this.setCurrentItem(this.state.selectedValue);
+            }
+            this.state.arrowClickHandler = this.toggleOpen.bind(this);
             this.state.documentClickHandler = this.documentClick.bind(this);
             this.state.listScrollHandler = this.listScroll.bind(this);
             this.state.inputChangeHandler = this.inputChange.bind(this);
-            $list.on('click', '.i-list-item', this.clickListItem.bind(this));
-            $container.on('click', this.state.containerClickHandler);
+            this.state.inputClickHandler = this.searchOpen.bind(this);
+            this.state.listItemClickHandler = this.clickListItem.bind(this);
+            $list.on('click', '.i-list-item', this.state.listItemClickHandler);
+            $arrow.on('click', this.state.arrowClickHandler);
             $(document).on('click', this.state.documentClickHandler);
-            $listWraper.on('scroll', this.state.listScrollHandler);
+            $listContainer.on('scroll', this.state.listScrollHandler);
             $input.on('input', this.state.inputChangeHandler);
+            $input.on('click', this.state.inputClickHandler);
         };
         DropDown.prototype.toggleOpen = function (e) {
             e.stopPropagation();
             var state = this.state;
             if (!state.isOpen) {
                 this.state.data = this.buildStateData(this.options.data, undefined);
-                this.state.$dom.$list.css('height', this.state.data.length * this.state.listItemHeight);
-                this.buildListItems();
                 this.open();
+                if (this.state.isChange) {
+                    this.resetScrollAndTransform(true);
+                    this.buildListItems();
+                }
             }
             else {
-                if (e.target.className !== this.arrowClass) {
-                    return;
-                }
                 this.close();
             }
         };
+        DropDown.prototype.searchOpen = function (e) {
+            e.stopPropagation();
+            this.state.data = this.buildStateData(this.options.data, this.state.inputString);
+            this.open();
+            this.resetScrollAndTransform();
+            this.buildListItems();
+        };
         DropDown.prototype.open = function () {
             this.state.$dom.$listContainer.show();
-            var lastScrollTop = this.state.listItemHeight * this.state.indexSection[0];
-            this.state.$dom.$listWraper.scrollTop(lastScrollTop);
-            this.state.lastScrollTop = lastScrollTop;
             this.state.isOpen = true;
         };
         DropDown.prototype.close = function () {
@@ -115,11 +119,10 @@
             for (var i = 0, len = data.length; i < len; i++) {
                 var element = data[i];
                 var $listItem = $($.parseHTML(this.options.listItemTmpl));
-                $listItem.html(element.name).data('value', element.value).data('index', i).css({
-                    height: this.state.listItemHeight,
-                    top: element.index * this.state.listItemHeight
+                $listItem.html(element.name).data('id', element.id).data('index', i).css({
+                    height: this.state.listItemHeight
                 });
-                if (element.value === this.state.selectedValue) {
+                if (element.id === this.state.selectedValue) {
                     $listItem.addClass('active');
                 }
                 this.state.$dom.$list.append($listItem[0]);
@@ -127,29 +130,43 @@
         };
         DropDown.prototype.clickListItem = function (e) {
             e.stopPropagation();
-            var target = e.target;
-            var value = $(target).data('value');
-            this.setCurrentItem(value);
+            var $target = $(e.target);
+            var id = $target.data('id');
+            $target.addClass('active').siblings('.active').removeClass('active');
+            this.setCurrentItem(id);
             this.close();
+            this.state.isChange = false;
         };
-        DropDown.prototype.setCurrentItem = function (value) {
-            this.state.selectedValue = value;
+        DropDown.prototype.setCurrentItem = function (id) {
+            this.state.selectedValue = id;
             var filterItems = this.state.data.filter(function (x) {
-                return x.value === value;
+                return x.id === id;
             });
             if (filterItems.length > 0) {
                 var currentItem = filterItems[0];
                 var index = currentItem.originalIndex;
-                var wraperHeight = this.state.$dom.$listWraper.outerHeight();
-                var maxLineItemCount = Math.ceil(wraperHeight / this.state.listItemHeight);
-                if (index > this.options.data.length - maxLineItemCount) {
-                    index = this.options.data.length - maxLineItemCount;
+                this.updateStartEndIndex((index + 20) * this.options.listItemHeight);
+                this.state.inputString = currentItem.name;
+                this.state.$dom.$input.val(currentItem.name).data('id', currentItem.id);
+                this.state.$dom.$input.removeClass('invalid');
+                if (this.options.onSetSelectValue) {
+                    this.options.onSetSelectValue(null, {
+                        id: currentItem.id,
+                        name: currentItem.name,
+                        originalItem: currentItem
+                    }, null);
                 }
-                this.state.indexSection[0] = index;
-                this.state.indexSection[1] = Math.min(this.options.data.length, index + this.options.pageCount);
-                this.state.$dom.$input.val(currentItem.name).data('value', currentItem.value);
-                this.state.$dom.$origin.val(currentItem.value).data('name', currentItem.name);
             }
+        };
+        DropDown.prototype.resetScrollAndTransform = function (notUpdate) {
+            if (!notUpdate) {
+                this.state.indexSection = [0, this.options.pageCount];
+                this.state.lastScrollTop = 0;
+            }
+            this.state.isChange = true;
+            this.state.$dom.$listWraper.css('height', this.state.data.length * this.state.listItemHeight);
+            this.state.$dom.$listContainer.scrollTop(this.state.lastScrollTop);
+            this.state.$dom.$list.css('transform', 'translateY(' + this.state.lastScrollTop + 'px)');
         };
         DropDown.prototype.documentClick = function (e) {
             var state = this.state;
@@ -161,40 +178,32 @@
         DropDown.prototype.listScroll = function (e) {
             var scrollTop = e.target.scrollTop;
             var scrollPX = scrollTop - this.state.lastScrollTop;
-            var direction = scrollPX > 0 ? 1 : -1;
             var scrollCount = Math.floor(Math.abs(scrollPX) / this.state.listItemHeight);
             if (scrollCount >= this.state.threshold) {
-                var data = this.state.data;
-                var i = Math.max(scrollCount - this.options.pageCount, this.state.threshold);
-                for (; i < scrollCount; i++) {
-                    var index = direction === 1 ? this.state.indexSection[1] + i : this.state.indexSection[0] - i - 1;
-                    if (index >= data.length || index < 0) {
-                        break;
-                    }
-                    var element = data[index];
-                    var $listItem = $($.parseHTML(this.options.listItemTmpl));
-                    $listItem.html(element.name).data('value', element.value).data('index', index).css({
-                        height: this.state.listItemHeight,
-                        top: element.index * this.state.listItemHeight
-                    });
-                    if (element.value === this.state.selectedValue) {
-                        $listItem.addClass('active');
-                    }
-                    if (direction === 1) {
-                        this.state.$dom.$list.append($listItem[0]);
-                        this.state.$dom.$list.find('div:first').remove();
-                    }
-                    else {
-                        this.state.$dom.$list.prepend($listItem[0]);
-                        this.state.$dom.$list.find('div:last').remove();
-                    }
-                }
-                this.state.indexSection = [
-                    this.state.indexSection[0] + (i * direction),
-                    this.state.indexSection[1] + (i * direction),
-                ];
-                this.state.lastScrollTop = this.state.lastScrollTop + (direction * scrollCount * this.state.listItemHeight);
+                this.updateStartEndIndex(scrollTop);
+                this.buildListItems();
+                this.state.$dom.$list.css('transform', 'translateY(' + this.state.lastScrollTop + 'px)');
             }
+        };
+        DropDown.prototype.updateStartEndIndex = function (scrollTop) {
+            var data = this.options.data;
+            var scrolledRowsCount = Math.floor(scrollTop / this.options.listItemHeight);
+            var startIndex = scrolledRowsCount - this.state.threshold - 10;
+            var endIndex = scrolledRowsCount + this.options.pageCount + this.state.threshold;
+            if (startIndex > data.length - this.options.pageCount) {
+                startIndex = data.length - this.options.pageCount;
+            }
+            if (startIndex < 0) {
+                startIndex = 0;
+            }
+            if (endIndex < this.options.pageCount) {
+                endIndex = this.options.pageCount;
+            }
+            if (endIndex > data.length) {
+                endIndex = data.length;
+            }
+            this.state.indexSection = [startIndex, endIndex];
+            this.state.lastScrollTop = startIndex * this.state.listItemHeight;
         };
         DropDown.prototype.buildStateData = function (data, key) {
             if (key === undefined || key.trim().length === 0) {
@@ -217,30 +226,34 @@
             return filteredData;
         };
         DropDown.prototype.inputChange = function (e) {
-            var value = e.target.value;
+            var id = e.target.value;
             if (!this.state.isOpen) {
                 this.open();
             }
             if (this.state.searchDelayTimeoutId !== null) {
                 clearTimeout(this.state.searchDelayTimeoutId);
             }
-            this.state.searchDelayTimeoutId = setTimeout(this.handleInputChange.bind(this), this.options.searchDelay, value);
+            this.state.searchDelayTimeoutId = setTimeout(this.handleInputChange.bind(this), this.options.searchDelay, id);
         };
-        DropDown.prototype.handleInputChange = function (value) {
-            this.state.data = this.buildStateData(this.options.data, value);
-            this.state.indexSection = [0, this.options.pageCount];
-            this.state.lastScrollTop = 0;
+        DropDown.prototype.handleInputChange = function (id) {
+            this.state.inputString = id;
+            this.state.data = this.buildStateData(this.options.data, id);
             this.state.selectedValue = null;
-            this.state.$dom.$origin.val('').data('name', '');
-            this.state.$dom.$input.data('value', '');
+            this.state.$dom.$input.data('id', '');
+            this.resetScrollAndTransform();
             this.buildListItems();
-            var lastScrollTop = this.state.listItemHeight * this.state.indexSection[0];
-            this.state.$dom.$listWraper.scrollTop(lastScrollTop);
-            this.state.lastScrollTop = lastScrollTop;
-            this.state.$dom.$list.css('height', this.state.data.length * this.state.listItemHeight);
+            this.state.$dom.$input.addClass('invalid');
+            if (this.options.onUnsetSelectValue) {
+                this.options.onUnsetSelectValue();
+            }
         };
         DropDown.prototype.destory = function () {
             $(document).off('click', this.state.documentClickHandler);
+            this.state.$dom.$list.off('click', '.i-list-item', this.state.listItemClickHandler);
+            this.state.$dom.$arrow.off('click', this.state.arrowClickHandler);
+            this.state.$dom.$listContainer.off('scroll', this.state.listScrollHandler);
+            this.state.$dom.$input.off('input', this.state.inputChangeHandler);
+            this.state.$dom.$input.off('click', this.state.inputClickHandler);
         };
         return DropDown;
     }());

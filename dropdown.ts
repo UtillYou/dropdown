@@ -15,33 +15,39 @@ interface Options {
   thresholdPercent: number; // 滚动多少个数据才处理，为 (0,1] 的小数 , 用这个值乘以 pageCount 再向上取整就是真实的值
   searchDelay: number; // 输入框键入新值后延迟多久开始搜索，毫秒
   listItemHeight?: number;
+  onDataRequestSuccess?:Function;
+  onSetSelectValue?:Function;
+  onUnsetSelectValue?:Function;
 }
 interface StateDom {
-  $origin: JQuery<HTMLElement>;
-  $container: JQuery<Node[]>;
-  $input: JQuery<Node[]>;
-  $arrow: JQuery<Node[]>;
-  $listContainer: JQuery<Node[]>;
-  $listWraper: JQuery<Node[]>;
-  $list: JQuery<Node[]>;
+  $container: JQuery<HTMLElement>;
+  $input: JQuery<HTMLElement>;
+  $arrow: JQuery<HTMLElement>;
+  $listContainer: JQuery<HTMLElement>;
+  $listWraper: JQuery<HTMLElement>;
+  $list: JQuery<HTMLElement>;
 
 }
 
 interface State {
   isOpen: boolean; // 是否展开
   isFocus: boolean; // 是否聚焦
+  isChange:boolean; // 自从上次关闭后数据是否有变动
   width: number; // 原组件的宽度
   height: number; // 原组件的高度
   selectedValue: string;
+  inputString:string; // 输入框中的文本
   lastScrollTop: number;
   threshold: number; // 滚动多少个数据才处理 , option 里的百分比计算得出来的值
   listItemHeight?: number;
   indexSection: [number, number];
   data: Array<DataItem>;
-  containerClickHandler?: (event: JQuery.ClickEvent) => void;
+  arrowClickHandler?: (event: JQuery.ClickEvent) => void;
   documentClickHandler?: (event: JQuery.ClickEvent) => void;
   listScrollHandler?: (event: JQuery.ScrollEvent) => void;
+  inputClickHandler?: (event: JQuery.ClickEvent) => void;
   inputChangeHandler?: (event: JQuery.ChangeEvent) => void;
+  listItemClickHandler?: (event: JQuery.ClickEvent) => void;
   $dom?: StateDom;
   searchDelayTimeoutId?: number;
 }
@@ -51,14 +57,20 @@ interface State {
  */
 interface DataItem {
   name: string; // 显示项
-  value: string; // 值项
+  id: string; // 值项
   index?: number; // 索引,过滤后的索引
   originalIndex?: number; // 原索引
 }
 
 ; (function ($) {
   class DropDown {
+    readonly containerClass: string = 'i-dropdown-container';
+    readonly inputClass: string = 'i-input-field';
     readonly arrowClass: string = 'i-arrow';
+    readonly listContainerClass: string = 'i-list-container';
+    readonly listWraperClass: string = 'i-list-wraper';
+    readonly listClass: string = 'i-list';
+    readonly listItemClass: string = 'i-list-item';
     $this: JQuery;
     options: Options;
     state: State;
@@ -74,8 +86,9 @@ interface DataItem {
         listTmpl: '<div class="i-list"></div>',
         listItemTmpl: '<div class="i-list-item"></div>',
         pageCount: 50,
-        thresholdPercent: 0,
+        thresholdPercent: 0.2,
         searchDelay: 300,
+        listItemHeight: 30
       };
       var options = $.extend(defaults, optionsParam);
 
@@ -84,9 +97,11 @@ interface DataItem {
       this.state = {
         isOpen: false,
         isFocus: false,
+        isChange:true,
         width: null,
         height: null,
-        selectedValue: options.selectedValue || options.data[0].value,
+        selectedValue: options.selectedValue,
+        inputString:'',
         lastScrollTop: 0,
         indexSection: [0, options.pageCount],
         threshold: Math.ceil(options.pageCount * options.thresholdPercent),
@@ -96,71 +111,59 @@ interface DataItem {
       };
 
       this.initHtml();
+      
+      if (this.options.onDataRequestSuccess) {
+        this.state.$dom.$arrow
+        .removeClass('disabled loading-state-button')
+        .find('.loading-state')
+        .attr("class", 'caret');
+        this.options.onDataRequestSuccess();
+      }
     }
 
     /**
      * 初始化HTML，将原始的元素隐藏，构建插件HTML
      */
     initHtml() {
-      var options = this.options;
       var $this = this.$this;
-      var width = $this.width();
-      var height = $this.height();
-      var margin = $this.css('margin');
 
-      var container = $.parseHTML(options.containerTmpl);
-      var input = $.parseHTML(options.inputTmpl);
-      var arrow = $.parseHTML(options.arrowTmpl);
-      var listContainer = $.parseHTML(options.listContainerTmpl);
-      var listWraper = $.parseHTML(options.listWraperTmpl);
-      var list = $.parseHTML(options.listTmpl);
-
-
-      var $container = $(container);
-      var $input = $(input);
-      var $arrow = $(arrow);
-      var $listContainer = $(listContainer);
-      var $listWraper = $(listWraper);
-      var $list = $(list);
+      var $container = $this;
+      var $input = $this.find(`.${this.inputClass}`);
+      var $arrow = $this.find(`.${this.arrowClass}`);
+      var $listContainer = $this.find(`.${this.listContainerClass}`);
+      var $listWraper = $this.find(`.${this.listWraperClass}`);
+      var $list = $this.find(`.${this.listClass}`);
 
 
       this.state.$dom = {
-        $origin: $this,
         $container: $container,
         $input: $input,
         $arrow: $arrow,
         $listContainer: $listContainer,
         $listWraper: $listWraper,
         $list: $list,
-
       }
 
-      $listContainer.append(listWraper);
-      $listWraper.append(list);
-
-      $list.css('height', this.state.data.length * this.state.listItemHeight)
-      $container.css({
-        width: width + 'px',
-        height: height + 'px',
-        margin: margin,
-      }).append(input).append(arrow).append(listContainer);
-      $this.after(container);
-
-      $this.hide();
+      $listWraper.css('height', this.state.data.length * this.state.listItemHeight)
       $listContainer.hide();
-      this.setCurrentItem(this.state.selectedValue);
+      if (this.state.selectedValue !== undefined && this.state.selectedValue !== null) {
+        this.setCurrentItem(this.state.selectedValue);
+      }
 
       // 绑定事件
-      this.state.containerClickHandler = this.toggleOpen.bind(this);
+      this.state.arrowClickHandler = this.toggleOpen.bind(this);
       this.state.documentClickHandler = this.documentClick.bind(this);
       this.state.listScrollHandler = this.listScroll.bind(this);
       this.state.inputChangeHandler = this.inputChange.bind(this);
+      this.state.inputClickHandler = this.searchOpen.bind(this);
+      this.state.listItemClickHandler = this.clickListItem.bind(this);
 
-      $list.on('click', '.i-list-item', this.clickListItem.bind(this));
-      $container.on('click', this.state.containerClickHandler);
+      $list.on('click', '.i-list-item', this.state.listItemClickHandler);
+      $arrow.on('click', this.state.arrowClickHandler);
       $(document).on('click', this.state.documentClickHandler);
-      $listWraper.on('scroll', this.state.listScrollHandler);
+      $listContainer.on('scroll', this.state.listScrollHandler);
       $input.on('input', this.state.inputChangeHandler)
+      $input.on('click', this.state.inputClickHandler)
     }
 
     toggleOpen(e: JQuery.ClickEvent): void {
@@ -169,31 +172,35 @@ interface DataItem {
 
       if (!state.isOpen) {
         this.state.data = this.buildStateData(this.options.data, undefined);
-        this.state.$dom.$list.css('height', this.state.data.length * this.state.listItemHeight);
-        this.buildListItems();
         this.open();
-
-      } else {
-        if (e.target.className !== this.arrowClass) {
-          return;
+        if (this.state.isChange) {
+          this.resetScrollAndTransform(true);
+          this.buildListItems();
         }
+      } else {
         this.close();
       }
     }
 
+    searchOpen(e: JQuery.ClickEvent): void {
+      e.stopPropagation();
+      this.state.data = this.buildStateData(this.options.data, this.state.inputString);
+      this.open();
+      this.resetScrollAndTransform();
+      this.buildListItems();
+      
+    }
+
     open() {
       this.state.$dom.$listContainer.show();
-
-      var lastScrollTop = this.state.listItemHeight * this.state.indexSection[0];
-      this.state.$dom.$listWraper.scrollTop(lastScrollTop);
-      this.state.lastScrollTop = lastScrollTop;
-
       this.state.isOpen = true;
+      
     }
 
     close() {
       this.state.$dom.$listContainer.hide();
       this.state.isOpen = false;
+      
     }
 
     buildListItems() {
@@ -203,11 +210,10 @@ interface DataItem {
       for (var i = 0, len = data.length; i < len; i++) {
         const element = data[i];
         var $listItem = $($.parseHTML(this.options.listItemTmpl));
-        $listItem.html(element.name).data('value', element.value).data('index', i).css({
+        $listItem.html(element.name).data('id', element.id).data('index', i).css({
           height: this.state.listItemHeight,
-          top: element.index * this.state.listItemHeight
         });
-        if (element.value === this.state.selectedValue) {
+        if (element.id === this.state.selectedValue) {
           $listItem.addClass('active');
         }
         this.state.$dom.$list.append($listItem[0]);
@@ -217,35 +223,46 @@ interface DataItem {
 
     clickListItem(e: JQuery.ClickEvent) {
       e.stopPropagation();
-      var target = e.target;
-      var value = $(target).data('value');
-      this.setCurrentItem(value);
+      var $target = $(e.target);
+      var id = $target.data('id');
+      $target.addClass('active').siblings('.active').removeClass('active');
+      this.setCurrentItem(id);
       this.close();
+      this.state.isChange = false;
     }
 
-    setCurrentItem(value: string) {
-      this.state.selectedValue = value;
+    setCurrentItem(id: string) {
+      this.state.selectedValue = id;
       var filterItems = this.state.data.filter(function (x) {
-        return x.value === value;
+        return x.id === id;
       });
       if (filterItems.length > 0) {
         var currentItem = filterItems[0];
         var index = currentItem.originalIndex;
-
-        // 处理选中项位于最后一页的情况
-        var wraperHeight = this.state.$dom.$listWraper.outerHeight();
-        var maxLineItemCount = Math.ceil(wraperHeight / this.state.listItemHeight);
-        if (index > this.options.data.length - maxLineItemCount) {
-          index = this.options.data.length - maxLineItemCount;
+        this.updateStartEndIndex((index+20)*this.options.listItemHeight)
+        this.state.inputString = currentItem.name;
+        this.state.$dom.$input.val(currentItem.name).data('id', currentItem.id);
+        this.state.$dom.$input.removeClass('invalid');
+        if (this.options.onSetSelectValue) {
+          this.options.onSetSelectValue(null,{
+            id:currentItem.id,
+            name:currentItem.name,
+            originalItem:currentItem
+          },null);
         }
-
-        this.state.indexSection[0] = index;
-        this.state.indexSection[1] = Math.min(this.options.data.length, index + this.options.pageCount);
-
-        this.state.$dom.$input.val(currentItem.name).data('value', currentItem.value);
-        this.state.$dom.$origin.val(currentItem.value).data('name', currentItem.name);
       }
 
+    }
+
+    resetScrollAndTransform(notUpdate?:boolean){
+      if (!notUpdate) {
+        this.state.indexSection = [0, this.options.pageCount];
+        this.state.lastScrollTop = 0;
+      }
+      this.state.isChange = true;
+      this.state.$dom.$listWraper.css('height', this.state.data.length * this.state.listItemHeight);
+      this.state.$dom.$listContainer.scrollTop(this.state.lastScrollTop);
+      this.state.$dom.$list.css('transform', 'translateY(' + this.state.lastScrollTop + 'px)');
     }
 
     documentClick(e: JQuery.ClickEvent) {
@@ -259,42 +276,43 @@ interface DataItem {
     listScroll(e: JQuery.ScrollEvent) {
       var scrollTop = e.target.scrollTop;
       var scrollPX = scrollTop - this.state.lastScrollTop;
-      var direction = scrollPX > 0 ? 1 : -1;
       var scrollCount = Math.floor(Math.abs(scrollPX) / this.state.listItemHeight);
-
+ 
+      
       if (scrollCount >= this.state.threshold) {
-        var data = this.state.data;
-        var i = Math.max(scrollCount - this.options.pageCount, this.state.threshold);
-        for (; i < scrollCount; i++) {
-          var index = direction === 1 ? this.state.indexSection[1] + i : this.state.indexSection[0] - i - 1;
-          if (index >= data.length || index < 0) {
-            break;
-          }
-          var element = data[index];
-          var $listItem = $($.parseHTML(this.options.listItemTmpl));
-          $listItem.html(element.name).data('value', element.value).data('index', index).css({
-            height: this.state.listItemHeight,
-            top: element.index * this.state.listItemHeight
-          });
-          if (element.value === this.state.selectedValue) {
-            $listItem.addClass('active');
-          }
-          if (direction === 1) {
-            this.state.$dom.$list.append($listItem[0]);
-            this.state.$dom.$list.find('div:first').remove();
-          } else {
-            this.state.$dom.$list.prepend($listItem[0]);
-            this.state.$dom.$list.find('div:last').remove();
-          }
+        this.updateStartEndIndex(scrollTop);
 
-        }
+        this.buildListItems();
 
-        this.state.indexSection = [
-          this.state.indexSection[0] + (i * direction),
-          this.state.indexSection[1] + (i * direction),
-        ];
-        this.state.lastScrollTop = this.state.lastScrollTop + (direction * scrollCount * this.state.listItemHeight);
+        this.state.$dom.$list.css('transform', 'translateY(' + this.state.lastScrollTop + 'px)');
       }
+    }
+
+    updateStartEndIndex(scrollTop: number) {
+      var data = this.options.data;
+      const scrolledRowsCount = Math.floor(scrollTop / this.options.listItemHeight);
+
+      let startIndex = scrolledRowsCount - this.state.threshold - 10;
+      let endIndex = scrolledRowsCount + this.options.pageCount + this.state.threshold;
+
+      if (startIndex > data.length - this.options.pageCount) {
+        startIndex = data.length - this.options.pageCount
+      }
+
+      if (startIndex < 0) {
+        startIndex = 0;
+      } 
+
+      if (endIndex < this.options.pageCount) {
+        endIndex = this.options.pageCount;
+      }
+
+      if (endIndex > data.length) {
+        endIndex = data.length;
+      }
+
+      this.state.indexSection = [startIndex, endIndex];
+      this.state.lastScrollTop = startIndex * this.state.listItemHeight;
     }
 
     /**
@@ -327,7 +345,7 @@ interface DataItem {
     }
 
     inputChange(e: JQuery.ChangeEvent) {
-      var value = e.target.value;
+      var id = e.target.value;
 
       if (!this.state.isOpen) {
         this.open();
@@ -336,27 +354,30 @@ interface DataItem {
       if (this.state.searchDelayTimeoutId !== null) {
         clearTimeout(this.state.searchDelayTimeoutId);
       }
-      this.state.searchDelayTimeoutId = setTimeout(this.handleInputChange.bind(this), this.options.searchDelay, value);
+      this.state.searchDelayTimeoutId = setTimeout(this.handleInputChange.bind(this), this.options.searchDelay, id);
     }
 
-    handleInputChange(value: string) {
-      this.state.data = this.buildStateData(this.options.data, value);
-      this.state.indexSection = [0, this.options.pageCount];
-      this.state.lastScrollTop = 0;
+    handleInputChange(id: string) {
+      this.state.inputString = id;
+      this.state.data = this.buildStateData(this.options.data, id);
       this.state.selectedValue = null;
-      this.state.$dom.$origin.val('').data('name', '');
-      this.state.$dom.$input.data('value', '');
+      this.state.$dom.$input.data('id', '');
+      
+      this.resetScrollAndTransform();
       this.buildListItems();
-
-      var lastScrollTop = this.state.listItemHeight * this.state.indexSection[0];
-      this.state.$dom.$listWraper.scrollTop(lastScrollTop);
-      this.state.lastScrollTop = lastScrollTop;
-      this.state.$dom.$list.css('height', this.state.data.length * this.state.listItemHeight);
-
+      this.state.$dom.$input.addClass('invalid');
+      if (this.options.onUnsetSelectValue) {
+        this.options.onUnsetSelectValue();
+      }
     }
 
     destory() {
       $(document).off('click', this.state.documentClickHandler);
+      this.state.$dom.$list.off('click', '.i-list-item', this.state.listItemClickHandler);
+      this.state.$dom.$arrow.off('click', this.state.arrowClickHandler);
+      this.state.$dom.$listContainer.off('scroll', this.state.listScrollHandler);
+      this.state.$dom.$input.off('input', this.state.inputChangeHandler)
+      this.state.$dom.$input.off('click', this.state.inputClickHandler)
     }
   }
 

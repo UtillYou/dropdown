@@ -1,33 +1,57 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <title>Document</title>
+  <link rel="stylesheet" href="./bootstrap.min.css">
   <link rel="stylesheet/less" type="text/css" href="dropdown.less" />
   <script src="./less.min.js"></script>
 </head>
+
 <body>
   <div style="margin:20px;border:1px solid gray;width:400px;height:200px;">
     <input type="text" style="width:200px;height:30px;border:1px solid #333333;margin:20px;">
+
+
+    <div class="input-group i-dropdown-container" id="idropdown">
+      <input name="devices" type="text" placeholder="请新增或选择终端号" class="form-control i-input-field" maxlength="30"
+        id="quickDevices" autocomplete="off">
+      <div class="input-group-btn i-arrow">
+        <button type="button" class="btn btn-white" data-toggle="">
+          <i class="caret"></i>
+        </button>
+      </div>
+      <div class="i-list-container">
+        <div class="i-list-wraper">
+          <div class="i-list"></div>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
-<div style="clear: both;"></div>
+
+
+
+  </div>
+  <div style="clear: both;"></div>
   <script src="./jquery-1.11.3.min.js"></script>
   <script src="./dropdown.js"></script>
   <script type="text/javascript">
-    var arr=[];
-    for (var i = 0; i < 1000000; i++) {
+    var arr = [];
+    for (var i = 0; i < 38; i++) {
       arr.push({
-        name:'俺是第'+i.toString()+'项',
-        value:i.toString()
-      }) 
+        name: '俺是第' + i.toString() + '项',
+        id: i.toString()
+      })
     }
-    $('input').dropdown({
-      data:arr,
-      pageCount:50
+    $('#idropdown').dropdown({
+      data: arr,
+      pageCount: 20,
+      listItemHeight:31
     });
   </script>
 </body>
+
 </html>
